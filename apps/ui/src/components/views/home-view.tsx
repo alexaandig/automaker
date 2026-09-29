@@ -1,302 +1,451 @@
-import { Link } from '@tanstack/react-router';
-import { Activity, ArrowRight, GitBranch, Import, MessageSquare } from 'lucide-react';
-import { buttonVariants } from '@/components/ui/button';
+import { useMemo, useState } from 'react';
+import {
+  ArrowRight,
+  Bell,
+  CalendarDays,
+  Check,
+  ChevronDown,
+  CircleDollarSign,
+  Clock3,
+  FileText,
+  Filter,
+  MoreHorizontal,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Sparkles,
+  Users,
+  WalletCards,
+} from 'lucide-react';
 import { useAppStore } from '@/store/app-store';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-const lanes = [
+const stages = [
+  { id: 'lead', label: 'Leads', color: 'bg-sky-500', count: 8 },
+  { id: 'brief', label: 'Briefs', color: 'bg-violet-500', count: 5 },
+  { id: 'proposal', label: 'Proposals', color: 'bg-amber-500', count: 4 },
+  { id: 'contract', label: 'Contracts', color: 'bg-orange-500', count: 3 },
+  { id: 'billing', label: 'Billing', color: 'bg-emerald-500', count: 6 },
+] as const;
+
+type StageId = (typeof stages)[number]['id'];
+
+type Deal = {
+  id: string;
+  name: string;
+  customer: string;
+  stage: StageId;
+  value: string;
+  owner: string;
+  initials: string;
+  due: string;
+  status: string;
+  statusTone: 'default' | 'secondary' | 'outline';
+};
+
+const deals: Deal[] = [
   {
-    title: 'Backlog',
-    label: '待开发',
-    color: 'bg-[var(--status-backlog)]',
-    description: '导入或手工创建任务，确认范围、模型与依赖，再手动启动或等待自动派发。',
-    action: '你来做：明确验收标准',
+    id: 'acme',
+    name: 'Acme website rebuild',
+    customer: 'Acme Corporation',
+    stage: 'proposal',
+    value: '$48,000',
+    owner: 'Maya Chen',
+    initials: 'MC',
+    due: 'Due Oct 04',
+    status: 'Needs review',
+    statusTone: 'default',
   },
   {
-    title: 'In Progress',
-    label: '开发中',
-    color: 'bg-[var(--status-in-progress)]',
-    description: 'Agent 在任务对应的 Worktree 中开发和验证。启用计划审批时，先审阅计划。',
-    action: '你来做：跟进日志，回答问题',
+    id: 'northstar',
+    name: 'Northstar mobile app',
+    customer: 'Northstar Labs',
+    stage: 'brief',
+    value: '$72,500',
+    owner: 'Jordan Lee',
+    initials: 'JL',
+    due: 'Due Oct 08',
+    status: 'Draft',
+    statusTone: 'secondary',
   },
   {
-    title: 'Needs Attention',
-    label: '需要处理',
-    color: 'bg-[var(--status-error)]',
-    description: '执行失败、冲突或中断时集中展示。先查看原因，再修复环境或补充指令后继续。',
-    action: '异常分支：并非每个任务都经过',
+    id: 'lumen',
+    name: 'Lumen brand system',
+    customer: 'Lumen Studio',
+    stage: 'contract',
+    value: '$31,200',
+    owner: 'Maya Chen',
+    initials: 'MC',
+    due: 'Due Sep 30',
+    status: 'Awaiting signature',
+    statusTone: 'outline',
   },
   {
-    title: 'Waiting Review',
-    label: '等待验收',
-    color: 'bg-[var(--status-waiting)]',
-    description: '检查代码差异、测试、预览和真实截图。不符合要求时反馈修改，通过后 Verify。',
-    action: '你来做：实际验收交付',
+    id: 'orbit',
+    name: 'Orbit analytics rollout',
+    customer: 'Orbit Health',
+    stage: 'lead',
+    value: '$96,000',
+    owner: 'Sam Rivera',
+    initials: 'SR',
+    due: 'Updated today',
+    status: 'Qualified',
+    statusTone: 'secondary',
   },
   {
-    title: 'Done',
-    label: '已验证',
-    color: 'bg-[var(--status-success)]',
-    description: '已在 Automaker 内验证。点击 Complete，检查交付预览并确认，才能推进最终交付。',
-    action: '你来做：确认合并与完成',
+    id: 'field',
+    name: 'Fieldwork portal',
+    customer: 'Fieldwork Co.',
+    stage: 'billing',
+    value: '$18,750',
+    owner: 'Jordan Lee',
+    initials: 'JL',
+    due: 'Invoice #1042',
+    status: 'Payment due',
+    statusTone: 'default',
+  },
+  {
+    id: 'haven',
+    name: 'Haven onboarding',
+    customer: 'Haven Financial',
+    stage: 'billing',
+    value: '$12,400',
+    owner: 'Sam Rivera',
+    initials: 'SR',
+    due: 'Paid Sep 24',
+    status: 'Paid',
+    statusTone: 'outline',
   },
 ];
 
+const stageLabels: Record<StageId, string> = Object.fromEntries(
+  stages.map((stage) => [stage.id, stage.label])
+) as Record<StageId, string>;
+
+function Stat({
+  label,
+  value,
+  detail,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: typeof Users;
+}) {
+  return (
+    <Card className="border-border/70 bg-card/80 shadow-none">
+      <CardContent className="flex items-start justify-between p-4">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-muted/50 p-2.5 text-muted-foreground">
+          <Icon aria-hidden="true" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DealCard({ deal, onSelect }: { deal: Deal; onSelect: (deal: Deal) => void }) {
+  const stage = stages.find((item) => item.id === deal.stage);
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(deal)}
+      className="group w-full rounded-xl border border-border/70 bg-card p-3 text-left transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">{deal.name}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{deal.customer}</p>
+        </div>
+        <MoreHorizontal
+          aria-hidden="true"
+          className="shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100"
+        />
+      </div>
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">{deal.value}</span>
+        <Badge variant={deal.statusTone} className="max-w-[125px] truncate text-[10px]">
+          {deal.status}
+        </Badge>
+      </div>
+      <div className="mt-4 flex items-center justify-between border-t border-border/60 pt-3 text-[11px] text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span className={`size-1.5 rounded-full ${stage?.color}`} />
+          {stageLabels[deal.stage]}
+        </span>
+        <span>{deal.due}</span>
+      </div>
+    </button>
+  );
+}
+
 export function HomeView() {
   const currentProject = useAppStore((state) => state.currentProject);
+  const [activeStage, setActiveStage] = useState<StageId | 'all'>('all');
+  const [search, setSearch] = useState('');
+  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
+
+  const filteredDeals = useMemo(
+    () =>
+      deals.filter((deal) => {
+        const matchesStage = activeStage === 'all' || deal.stage === activeStage;
+        const query = search.trim().toLowerCase();
+        return (
+          matchesStage && (!query || `${deal.name} ${deal.customer}`.toLowerCase().includes(query))
+        );
+      }),
+    [activeStage, search]
+  );
 
   return (
-    <div className="flex-1 overflow-y-auto content-bg" data-testid="home-view" lang="zh-CN">
-      <div className="mx-auto max-w-6xl space-y-10 px-5 py-10 sm:px-10">
-        <header className="relative overflow-hidden rounded-2xl border border-border bg-card p-6 sm:p-10">
-          <div
-            className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-primary/10 blur-3xl"
-            aria-hidden="true"
-          />
-          <div className="relative">
-            <div className="mb-6 flex items-center gap-3 text-sm font-semibold">
-              <img src="/automaker.svg" alt="" className="h-9 w-9" />
-              Automaker · 使用指南
+    <main className="content-bg min-h-full flex-1 overflow-y-auto" data-testid="home-view">
+      <div className="mx-auto flex max-w-[1500px] flex-col gap-6 p-5 lg:p-8">
+        <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              <span className="size-2 rounded-full bg-emerald-500" /> Revenue workspace
             </div>
-            <h1 className="max-w-3xl text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
-              从 Jira 需求，到可验收的交付
-            </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">
-              把需求带入看板，让 Agent 在独立的代码空间中开发。
-              你可以随时查看进度、参与决策、反馈修改，并在验收后确认交付。
+            <h1 className="text-3xl font-semibold tracking-tight">Good morning, Maya</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Keep every opportunity moving from first conversation to paid invoice.
             </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link to="/dashboard" className={buttonVariants()}>
-                打开或创建项目 <ArrowRight aria-hidden="true" />
-              </Link>
-              {currentProject && (
-                <Link to="/board" className={buttonVariants({ variant: 'outline' })}>
-                  进入任务看板
-                </Link>
-              )}
-              <Link to="/running-agents" className={buttonVariants({ variant: 'outline' })}>
-                查看运行中的 Agent
-              </Link>
-            </div>
-            <p className="mt-4 text-sm text-muted-foreground">
-              {currentProject
-                ? `当前项目：${currentProject.name}，下方项目入口均作用于该项目。`
-                : '先打开项目，再配置 Jira 同步、模型与项目上下文。'}
-            </p>
+            {currentProject && (
+              <p className="mt-1 text-xs text-muted-foreground">Workspace: {currentProject.name}</p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm">
+              <CalendarDays data-icon="inline-start" />
+              This quarter
+              <ChevronDown data-icon="inline-end" />
+            </Button>
+            <Button size="sm">
+              <Plus data-icon="inline-start" />
+              New opportunity
+            </Button>
+            <Button variant="ghost" size="icon" aria-label="Notifications">
+              <Bell />
+            </Button>
           </div>
         </header>
 
-        <nav aria-label="首页章节" className="flex flex-wrap gap-2">
-          {[
-            ['import', '01 · 导入 Jira'],
-            ['scope', '02 · 确认拆分'],
-            ['lanes', '03 · 泳道推进'],
-            ['interact', '04 · 监控与交互'],
-          ].map(([id, label]) => (
-            <a
-              key={id}
-              href={`#${id}`}
-              className={buttonVariants({ variant: 'outline', size: 'sm' })}
-            >
-              {label}
-            </a>
-          ))}
-        </nav>
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Revenue overview">
+          <Stat
+            label="Pipeline value"
+            value="$268,850"
+            detail="+18.4% vs last quarter"
+            icon={CircleDollarSign}
+          />
+          <Stat
+            label="Active opportunities"
+            value="26"
+            detail="8 need attention this week"
+            icon={Users}
+          />
+          <Stat
+            label="Awaiting signature"
+            value="$103,200"
+            detail="3 contracts in review"
+            icon={FileText}
+          />
+          <Stat
+            label="Outstanding invoices"
+            value="$31,150"
+            detail="2 overdue · 4 due soon"
+            icon={WalletCards}
+          />
+        </section>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <section
-            id="import"
-            aria-labelledby="import-title"
-            className="scroll-mt-6 rounded-xl border border-border bg-card p-6"
-          >
-            <Import className="mb-4 h-6 w-6 text-primary" aria-hidden="true" />
-            <p className="text-xs font-semibold tracking-widest text-muted-foreground">
-              01 / IMPORT
-            </p>
-            <h2 id="import-title" className="mt-2 text-xl font-semibold">
-              如何导入 Jira
-            </h2>
-            <ol className="mt-5 list-decimal space-y-3 pl-5 text-sm leading-6 text-muted-foreground">
-              <li>
-                在服务端安装并登录 Jira CLI；打开项目，在 Project Settings → Jira Sync
-                配置站点与项目。
-              </li>
-              <li>用 JQL 和标签选择需求，设置 Agent / 模型、目标分支、轮询间隔与派发容量。</li>
-              <li>先「测试连接」，再「预览匹配与变更」，检查将创建、更新、跳过或阻塞的任务。</li>
-              <li>保存后「立即同步」。确认导入结果，再按需启用定时同步和自动执行。</li>
-            </ol>
-            <p className="mt-4 rounded-lg bg-muted/50 p-3 text-sm leading-6">
-              关闭自动执行仍会导入卡片。暂停同步不会停止已运行的 Agent； 普通同步不会自动关闭 Jira
-              或合并 MR。
-            </p>
-            {currentProject ? (
-              <Link
-                to="/project-settings"
-                search={{ section: 'jira' }}
-                className={buttonVariants({ variant: 'link', className: 'mt-3 px-0' })}
+        <section className="rounded-xl border border-border/70 bg-card/60 p-4 shadow-sm sm:p-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                <Sparkles aria-hidden="true" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold">Lead-to-cash pipeline</h2>
+                <p className="text-xs text-muted-foreground">
+                  One view of every commercial relationship and its next action.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" size="sm">
+                <SlidersHorizontal data-icon="inline-start" />
+                Customize
+              </Button>
+              <Button variant="outline" size="sm">
+                <Filter data-icon="inline-start" />
+                Filters
+              </Button>
+            </div>
+          </div>
+          <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-5">
+            {stages.map((stage) => (
+              <button
+                key={stage.id}
+                type="button"
+                onClick={() => setActiveStage(activeStage === stage.id ? 'all' : stage.id)}
+                className={`rounded-lg border p-3 text-left transition ${activeStage === stage.id ? 'border-primary bg-primary/5' : 'border-border/70 bg-background/40 hover:border-primary/40'}`}
               >
-                配置 Jira 同步 <ArrowRight aria-hidden="true" />
-              </Link>
-            ) : (
-              <Link
-                to="/dashboard"
-                className={buttonVariants({ variant: 'link', className: 'mt-3 px-0' })}
-              >
-                先选择项目 <ArrowRight aria-hidden="true" />
-              </Link>
+                <div className="flex items-center justify-between">
+                  <span className={`size-2 rounded-full ${stage.color}`} />
+                  <span className="text-lg font-semibold">{stage.count}</span>
+                </div>
+                <p className="mt-2 text-xs font-medium text-muted-foreground">{stage.label}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+          <section aria-labelledby="opportunities-title">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 id="opportunities-title" className="text-lg font-semibold">
+                  Active opportunities
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  {filteredDeals.length} records · click a card to inspect the relationship
+                </p>
+              </div>
+              <div className="relative w-full sm:w-64">
+                <Search
+                  aria-hidden="true"
+                  className="absolute left-3 top-2.5 text-muted-foreground"
+                />
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search opportunities"
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+              {filteredDeals.map((deal) => (
+                <DealCard key={deal.id} deal={deal} onSelect={setSelectedDeal} />
+              ))}
+            </div>
+            {filteredDeals.length === 0 && (
+              <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+                No opportunities match these filters.
+              </div>
             )}
           </section>
 
-          <section
-            id="scope"
-            aria-labelledby="scope-title"
-            className="scroll-mt-6 rounded-xl border border-border bg-card p-6"
-          >
-            <GitBranch className="mb-4 h-6 w-6 text-primary" aria-hidden="true" />
-            <p className="text-xs font-semibold tracking-widest text-muted-foreground">
-              02 / SCOPE
-            </p>
-            <h2 id="scope-title" className="mt-2 text-xl font-semibold">
-              如何拆分任务
-            </h2>
-            <p className="mt-5 text-sm leading-6 text-muted-foreground">
-              先确定交付边界，再让 Agent 开发。优先在 Jira
-              中把大需求拆成可验证的子任务，写清目标、依赖和验收标准。
-            </p>
-            <div className="my-5 rounded-lg border border-dashed border-border p-4 text-sm leading-7">
-              <p className="font-medium">示例：Story「增加订单导出」</p>
-              <ul className="mt-2 list-disc pl-5 text-muted-foreground">
-                <li>子任务：导出接口与权限检查</li>
-                <li>子任务：列表导出入口与错误提示</li>
-                <li>子任务：验证筛选条件与下载内容</li>
-              </ul>
-              <p className="mt-3 border-t border-border pt-3 font-medium">
-                普通同步 → 一张父任务卡 → 同一 Worktree 内完成这些子任务
-              </p>
-            </div>
-            <p className="text-sm leading-6 text-muted-foreground">
-              已有 Jira 子任务会成为父卡的交付范围，不重复建卡或再次拆分。 未拆分的 Epic / Story
-              会等待 Jira 拆分或人工明确批准 Automaker 拆分，不会自动派发。 需要 Agent
-              协助时，先审阅拆分建议、明确批准范围，再继续。
-            </p>
-          </section>
+          <aside className="flex flex-col gap-4">
+            <Card className="border-border/70 shadow-none">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center justify-between text-sm">
+                  Next actions <ArrowRight />
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3 pt-0">
+                <div className="flex gap-3 rounded-lg bg-muted/40 p-3">
+                  <div className="mt-0.5 text-amber-500">
+                    <Clock3 />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Review Acme proposal</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Due today · Maya Chen</p>
+                  </div>
+                </div>
+                <div className="flex gap-3 rounded-lg bg-muted/40 p-3">
+                  <div className="mt-0.5 text-violet-500">
+                    <FileText />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Send Northstar brief</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Due tomorrow · Jordan Lee</p>
+                  </div>
+                </div>
+                <div className="flex gap-3 rounded-lg bg-muted/40 p-3">
+                  <div className="mt-0.5 text-emerald-500">
+                    <WalletCards />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Follow up on invoice #1042</p>
+                    <p className="mt-1 text-xs text-muted-foreground">2 days overdue · Fieldwork</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-border/70 bg-primary text-primary-foreground shadow-none">
+              <CardContent className="p-5">
+                <p className="text-xs font-medium uppercase tracking-[0.16em] text-primary-foreground/70">
+                  Quarterly target
+                </p>
+                <p className="mt-3 text-3xl font-semibold">74%</p>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-primary-foreground/20">
+                  <div className="h-full w-[74%] rounded-full bg-primary-foreground" />
+                </div>
+                <p className="mt-3 text-xs text-primary-foreground/70">
+                  $268,850 of $360,000 closed or forecasted
+                </p>
+              </CardContent>
+            </Card>
+          </aside>
         </div>
 
-        <section id="lanes" aria-labelledby="lanes-title" className="scroll-mt-6">
-          <p className="text-xs font-semibold tracking-widest text-muted-foreground">
-            03 / WORKFLOW
-          </p>
-          <h2 id="lanes-title" className="mt-2 text-2xl font-semibold">
-            任务如何在泳道间推进
-          </h2>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            正常路径：Backlog → In Progress → Waiting Review → Done。Needs Attention
-            收集需要处理的异常； 项目配置的流水线还可能包含额外步骤。
-          </p>
-          <ol className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="任务泳道">
-            {lanes.map((lane) => (
-              <li
-                key={lane.title}
-                className="overflow-hidden rounded-xl border border-border bg-card"
+        {selectedDeal && (
+          <div
+            role="dialog"
+            aria-label={`${selectedDeal.name} details`}
+            className="fixed inset-y-0 right-0 z-20 w-full max-w-md border-l border-border bg-background p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  {stageLabels[selectedDeal.stage]}
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight">{selectedDeal.name}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{selectedDeal.customer}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Close details"
+                onClick={() => setSelectedDeal(null)}
               >
-                <div className={`h-1.5 ${lane.color}`} />
-                <div className="p-4">
-                  <h3 className="font-semibold">{lane.title}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">{lane.label}</p>
-                  <p className="mt-4 text-sm leading-6 text-muted-foreground">{lane.description}</p>
-                  <p className="mt-4 text-xs font-medium leading-5">{lane.action}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <div className="mt-4 rounded-xl border border-border bg-muted/40 p-5 text-sm leading-6">
-            <p className="font-semibold">Done ≠ 已合并，Complete ≠ 归档</p>
-            <p className="mt-2 text-muted-foreground">
-              验收未通过，用 Reply 或 Request Changes 反馈；通过后 Verify。 Complete
-              在人工确认后推进 MR 合并、Jira 关闭和预览资源释放，并保留分步结果。
-              失败时先修复再重试，改了代码需重新验收。不再推进的任务单独归档，记录原因并保留交付材料。
-            </p>
-          </div>
-        </section>
-
-        <section id="interact" aria-labelledby="interact-title" className="scroll-mt-6">
-          <p className="text-xs font-semibold tracking-widest text-muted-foreground">
-            04 / COLLABORATE
-          </p>
-          <h2 id="interact-title" className="mt-2 text-2xl font-semibold">
-            监控任务，与 Agent 一起推进
-          </h2>
-          <div className="mt-6 grid gap-6 md:grid-cols-2">
-            <article className="rounded-xl border border-border bg-card p-6">
-              <Activity className="mb-4 h-6 w-6 text-primary" aria-hidden="true" />
-              <h3 className="text-lg font-semibold">看什么，去哪里看</h3>
-              <dl className="mt-4 space-y-4 text-sm leading-6">
-                <div>
-                  <dt className="font-medium">Task Kanban · 单任务进度</dt>
-                  <dd className="text-muted-foreground">
-                    查看状态、执行日志、错误、需求更新、交付详情和验收材料。
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-medium">Work Board · 代码空间与交付</dt>
-                  <dd className="text-muted-foreground">
-                    按 Worktree 查看分支、差异、关联 PR / MR 和预览环境。
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-medium">运行中的 Agent · 跨项目执行</dt>
-                  <dd className="text-muted-foreground">
-                    查看正在运行的任务与模型、打开日志，必要时停止任务。
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-medium">Jira Sync · 同步记录</dt>
-                  <dd className="text-muted-foreground">
-                    任务没导入或没启动时，检查查询结果、容量、依赖和拆分阻塞。
-                  </dd>
-                </div>
-              </dl>
-              {currentProject && (
-                <Link
-                  to="/worktrees"
-                  className={buttonVariants({ variant: 'link', className: 'mt-4 px-0' })}
-                >
-                  打开 Work Board <ArrowRight aria-hidden="true" />
-                </Link>
-              )}
-            </article>
-            <article className="rounded-xl border border-border bg-card p-6">
-              <MessageSquare className="mb-4 h-6 w-6 text-primary" aria-hidden="true" />
-              <h3 className="text-lg font-semibold">什么时候，怎样回复</h3>
-              <ol className="mt-4 list-decimal space-y-3 pl-5 text-sm leading-6 text-muted-foreground">
-                <li>从任务卡打开 Conversation 查看会话；Agent 页面可查看 Herdr 工作区。</li>
-                <li>
-                  用 Reply
-                  回答问题、明确范围或继续开发。说明期望行为和验收条件，避免只回复「继续」。
-                </li>
-                <li>出现「需求已更新」时，先比较新要求，再明确哪些内容纳入本次交付。</li>
-                <li>
-                  执行失败先看日志，再补充修复指令。会话断开可重新打开；先确认 Agent
-                  是否仍在运行，避免重复启动。
-                </li>
-              </ol>
-              <blockquote className="mt-5 border-l-2 border-primary pl-4 text-sm leading-6">
-                「保留现有导出字段，仅补充无权限提示。请验证无权限账号无法下载，并提供测试结果和实际页面截图。」
-              </blockquote>
-              <p className="mt-4 text-xs leading-5 text-muted-foreground">
-                Pi 任务会话需要服务端已配置 Pi、Herdr 和可用模型。
+                <Check />
+              </Button>
+            </div>
+            <div className="mt-8 grid grid-cols-2 gap-3">
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-xs text-muted-foreground">Estimated value</p>
+                <p className="mt-1 font-semibold">{selectedDeal.value}</p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-xs text-muted-foreground">Status</p>
+                <p className="mt-1 font-semibold">{selectedDeal.status}</p>
+              </div>
+            </div>
+            <div className="mt-6 border-t border-border pt-5">
+              <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                Next step
               </p>
-              {currentProject && (
-                <Link
-                  to="/agent"
-                  className={buttonVariants({ variant: 'link', className: 'mt-3 px-0' })}
-                >
-                  打开 Agent 工作区 <ArrowRight aria-hidden="true" />
-                </Link>
-              )}
-            </article>
+              <p className="mt-2 text-sm leading-6">
+                Review the linked project brief, confirm scope, then move this opportunity forward
+                to the next commercial stage.
+              </p>
+              <Button className="mt-5 w-full">
+                Open relationship record <ArrowRight data-icon="inline-end" />
+              </Button>
+            </div>
           </div>
-        </section>
+        )}
       </div>
-    </div>
+    </main>
   );
 }
