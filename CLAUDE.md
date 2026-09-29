@@ -1,0 +1,218 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+Automaker is an autonomous AI development studio built as an npm workspace monorepo. It provides a Kanban-based workflow where AI agents (powered by Claude Agent SDK) implement features in isolated git worktrees.
+
+## Common Commands
+
+```bash
+# Development
+npm run dev                 # Interactive launcher (choose web or electron)
+npm run dev:web             # Web browser mode (localhost:3007)
+npm run dev:electron        # Desktop app mode
+npm run dev:electron:debug  # Desktop with DevTools open
+
+# Building
+npm run build               # Build web application
+npm run build:packages      # Build all shared packages (required before other builds)
+npm run build:electron      # Build desktop app for current platform
+npm run build:server        # Build server only
+
+# Testing
+npm run test                # E2E tests (Playwright, headless)
+npm run test:headed         # E2E tests with browser visible
+npm run test:server         # Server unit tests (Vitest)
+npm run test:packages       # All shared package tests
+npm run test:all            # All tests (packages + server)
+
+# Single test file
+npm run test:server -- tests/unit/specific.test.ts
+
+# Linting and formatting
+npm run lint                # ESLint
+npm run format              # Prettier write
+npm run format:check        # Prettier check
+```
+
+## Architecture
+
+### Monorepo Structure
+
+```
+automaker/
+├── apps/
+│   ├── ui/           # React + Vite + Electron frontend (port 3007)
+│   └── server/       # Express + WebSocket backend (port 3008)
+└── libs/             # Shared packages (@automaker/*)
+    ├── types/        # Core TypeScript definitions (no dependencies)
+    ├── utils/        # Logging, errors, image processing, context loading
+    ├── prompts/      # AI prompt templates
+    ├── platform/     # Path management, security, process spawning
+    ├── model-resolver/    # Claude model alias resolution
+    ├── dependency-resolver/  # Feature dependency ordering
+    └── git-utils/    # Git operations & worktree management
+```
+
+### Package Dependency Chain
+
+Packages can only depend on packages above them:
+
+```
+@automaker/types (no dependencies)
+    ↓
+@automaker/utils, @automaker/prompts, @automaker/platform, @automaker/model-resolver, @automaker/dependency-resolver
+    ↓
+@automaker/git-utils
+    ↓
+@automaker/server, @automaker/ui
+```
+
+### Key Technologies
+
+- **Frontend**: React 19, Vite 7, Electron 39, TanStack Router, Zustand 5, Tailwind CSS 4
+- **Backend**: Express 5, WebSocket (ws), Claude Agent SDK, node-pty
+- **Testing**: Playwright (E2E), Vitest (unit)
+
+### Server Architecture
+
+The server (`apps/server/src/`) follows a modular pattern:
+
+- `routes/` - Express route handlers organized by feature (agent, features, auto-mode, worktree, etc.)
+- `services/` - Business logic (AgentService, AutoModeService, FeatureLoader, TerminalService)
+- `providers/` - AI provider abstraction (currently Claude via Claude Agent SDK)
+- `lib/` - Utilities (events, auth, worktree metadata)
+
+### Frontend Architecture
+
+The UI (`apps/ui/src/`) uses:
+
+- `routes/` - TanStack Router file-based routing
+- `components/views/` - Main view components (board, settings, terminal, etc.)
+- `store/` - Zustand stores with persistence (app-store.ts, setup-store.ts)
+- `hooks/` - Custom React hooks
+- `lib/` - Utilities and API client
+
+## Data Storage
+
+### Per-Project Data (`.automaker/`)
+
+```
+.automaker/
+├── features/              # Feature JSON files and images
+│   └── {featureId}/
+│       ├── feature.json
+│       ├── agent-output.md
+│       └── images/
+├── context/               # Context files for AI agents (CLAUDE.md, etc.)
+├── settings.json          # Project-specific settings
+├── spec.md               # Project specification
+└── analysis.json         # Project structure analysis
+```
+
+### Global Data (`DATA_DIR`, default `./data`)
+
+```
+data/
+├── settings.json          # Global settings, profiles, shortcuts
+├── credentials.json       # API keys
+├── sessions-metadata.json # Chat session metadata
+└── agent-sessions/        # Conversation histories
+```
+
+## Import Conventions
+
+Always import from shared packages, never from old paths:
+
+```typescript
+// ✅ Correct
+import type { Feature, ExecuteOptions } from '@automaker/types';
+import { createLogger, classifyError } from '@automaker/utils';
+import { getEnhancementPrompt } from '@automaker/prompts';
+import { getFeatureDir, ensureAutomakerDir } from '@automaker/platform';
+import { resolveModelString } from '@automaker/model-resolver';
+import { resolveDependencies } from '@automaker/dependency-resolver';
+import { getGitRepositoryDiffs } from '@automaker/git-utils';
+
+// ❌ Never import from old paths
+import { Feature } from '../services/feature-loader'; // Wrong
+import { createLogger } from '../lib/logger'; // Wrong
+```
+
+## Key Patterns
+
+### Event-Driven Architecture
+
+All server operations emit events that stream to the frontend via WebSocket. Events are created using `createEventEmitter()` from `lib/events.ts`.
+
+### Git Worktree Isolation
+
+Each feature executes in an isolated git worktree, created via `@automaker/git-utils`. This protects the main branch during AI agent execution.
+
+### Context Files
+
+Project-specific rules are stored in `.automaker/context/` and automatically loaded into agent prompts via `loadContextFiles()` from `@automaker/utils`.
+
+### Pull Requests / Merge Requests
+
+**Every PR/MR is opened as a draft** so it can never be merged by accident:
+
+- Automaker's Create PR flow defaults to draft (`buildPrCreateArgs` adds `--draft` unless the caller passes `draft: false`); the dialog has "Create as draft" checked by default.
+- When creating one by hand, always use `gh pr create --draft`. For GitLab, add `-o merge_request.draft` to the push options and prefix the title with `Draft:`.
+- Never mark a PR/MR ready for review and never enable auto-merge on an agent-created PR; only a human does that.
+
+### Done Lane Delivery Conflicts
+
+A verified card stays in Done until its merge requests can actually be merged, so a
+conflict there is a fixable state rather than a dead end:
+
+- `POST /api/features/mr-conflicts` reports the conflicting MRs of one card (GitLab
+  `has_conflicts`, read only from the project's configured GitLab host).
+- The Done card renders them with a "让 Agent 修复冲突" button;
+  `POST /api/features/resolve-conflicts` dispatches one agent turn per owning task
+  (`findConflictOwner`) with `buildConflictResolutionPrompt`, which forbids merging
+  the MRs or touching other repositories.
+- The Complete preview returns `conflicts` separately from `blockers`, and Complete
+  stays disabled while conflicts exist.
+
+### Done Lane Worktree Retention
+
+The Done lane keeps the last `DONE_WORKTREE_RETENTION_DAYS` (7) days on the board:
+
+- A card stamps `verifiedAt` when it enters Done (`FeatureLoader.update` and
+  `FeatureStateManager.updateFeatureStatus`); `featureDoneAt()` falls back to the
+  delivery receipt / `updatedAt` / `createdAt` for cards verified before that.
+- `WorktreeRetentionService` (hourly from `index.ts`, or
+  `POST /api/features/release-stale-worktrees` with `dryRun` to preview) removes a
+  checkout once every card on its branch is done and the newest one is past the
+  window - and only when the branch is on `origin` and the checkout is clean. It
+  records `feature.worktreeRelease` and keeps the branch, the task record and the
+  pi conversations.
+- Rebuilding happens on the next Reply/Agent run (`ExecutionService`), when the
+  conversation is opened (`herdr-web`, `pi-web`, `opencode-web`) or through
+  `POST /api/features/rebuild-worktree`. It restores the recorded path so pi still
+  finds the card's session directory.
+- The board hides cards past the window; the Done header toggle (`+N 更早` /
+  `近 7 天`) reveals them, and a search always shows its matches.
+
+### Model Resolution
+
+Use `resolveModelString()` from `@automaker/model-resolver` to convert model aliases:
+
+- `haiku` → `claude-haiku-4-5`
+- `sonnet` → `claude-sonnet-4-20250514`
+- `opus` → `claude-opus-4-6`
+
+## Environment Variables
+
+- `ANTHROPIC_API_KEY` - Anthropic API key (or use Claude Code CLI auth)
+- `HOST` - Host to bind server to (default: 0.0.0.0)
+- `HOSTNAME` - Hostname for user-facing URLs (default: localhost)
+- `PORT` - Server port (default: 3008)
+- `DATA_DIR` - Data storage directory (default: ./data)
+- `ALLOWED_ROOT_DIRECTORY` - Restrict file operations to specific directory
+- `AUTOMAKER_MOCK_AGENT=true` - Enable mock agent mode for CI testing
+- `AUTOMAKER_AUTO_LOGIN=true` - Skip login prompt in development (disabled when NODE_ENV=production)
+- `VITE_HOSTNAME` - Hostname for frontend API URLs (default: localhost)
